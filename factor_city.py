@@ -71,16 +71,13 @@ def create_block(col: int, row: int, level: int, color: list) -> o3d.geometry.Tr
 
 class FactorCityApp:
     def __init__(self, grid: list[list[int]]):
-        self.grid          = [row[:] for row in grid]   # deep copy
-        self.show_labels   = True
+        self.grid          = [row[:] for row in grid]
         self.is_animating  = True
         self.truck_speed   = 1.0
         self.time_state    = 0.0
+        self.selected_building: tuple | None = None
 
-        self.selected_building: tuple | None = None   # (row, col)
-
-        self.building_geom_names: list[str]        = []
-        self.label_points:        list[np.ndarray] = []
+        self.building_geom_names: list[str] = []
 
         gui.Application.instance.initialize()
         self.window = gui.Application.instance.create_window(
@@ -120,12 +117,7 @@ class FactorCityApp:
 
     def setup_ui_controls(self, em: float) -> None:
         self.panel.add_child(gui.Label("FACTOR CITY ENGINE"))
-        self.panel.add_child(gui.Label("────────────────────"))
-
-        self.label_cb = gui.Checkbox("Render 3D Equations")
-        self.label_cb.checked = True
-        self.label_cb.set_on_checked(self.toggle_labels)
-        self.panel.add_child(self.label_cb)
+        self.panel.add_child(gui.Label(""))
 
         self.anim_cb = gui.Checkbox("Run Delivery Truck")
         self.anim_cb.checked = True
@@ -139,14 +131,13 @@ class FactorCityApp:
         self.speed_slider.set_on_value_changed(self.change_speed)
         self.panel.add_child(self.speed_slider)
 
-        self.panel.add_child(gui.Label("────────────────────"))
-
+        self.panel.add_child(gui.Label(""))
         self.panel.add_child(gui.Label("BUILDING INSPECTOR:"))
-        self.inspector_label = gui.Label("Click a building tower to analyze...")
+        self.inspector_label = gui.Label("Click a building to analyze...")
         self.panel.add_child(self.inspector_label)
 
-        self.panel.add_child(gui.Label("────────────────────"))
-        self.panel.add_child(gui.Label("Construct Custom Block Tower:"))
+        self.panel.add_child(gui.Label(""))
+        self.panel.add_child(gui.Label("Custom Block Tower:"))
 
         input_row = gui.Horiz(0.25 * em)
         self.num_input = gui.NumberEdit(gui.NumberEdit.INT)
@@ -158,6 +149,16 @@ class FactorCityApp:
         input_row.add_child(btn)
         self.panel.add_child(input_row)
 
+        self.panel.add_child(gui.Label(""))
+        self.panel.add_child(gui.Label("PRIME LEGEND:"))
+        color_names = {
+            2:"Red", 3:"Blue", 5:"Green", 7:"Yellow", 11:"Orange",
+            13:"Purple", 17:"Cyan", 19:"Magenta", 23:"Lime",
+            29:"Sienna", 31:"Steel blue"
+        }
+        for p in sorted(PRIME_COLORS.keys()):
+            self.panel.add_child(gui.Label(f"  p={p:2d}  {color_names.get(p, 'Gray')}"))
+
     # -----------------------------------------------------------------------
     # Scene construction
     # -----------------------------------------------------------------------
@@ -166,10 +167,6 @@ class FactorCityApp:
         for name in self.building_geom_names:
             self.scene_widget.scene.remove_geometry(name)
         self.building_geom_names.clear()
-
-        self.scene_widget.scene.clear_3d_labels()
-        self.label_points.clear()
-        self.build_static_legend()
 
         for row_idx, row in enumerate(self.grid):
             for col_idx, number in enumerate(row):
@@ -180,8 +177,6 @@ class FactorCityApp:
 
                 for level, prime in enumerate(factors):
                     color = PRIME_COLORS.get(prime, DEFAULT_COLOR)
-
-                    # Brighten selected building
                     if self.selected_building == (row_idx, col_idx):
                         color = [min(1.0, c + 0.25) for c in color]
 
@@ -189,17 +184,6 @@ class FactorCityApp:
                     name  = f"block_{row_idx}_{col_idx}_{level}"
                     self.scene_widget.scene.add_geometry(name, block, self.mat)
                     self.building_geom_names.append(name)
-
-                if self.show_labels:
-                    top_y    = len(factors) * BLOCK_HEIGHT + 0.25
-                    center_x = col_idx * BLOCK_SIZE + BLOCK_SIZE / 2
-                    center_z = row_idx * BLOCK_SIZE + BLOCK_SIZE / 2
-                    factor_str = " × ".join(map(str, factors))
-                    self.scene_widget.scene.add_3d_label(
-                        np.array([center_x, top_y, center_z]),
-                        f"{number} = {factor_str}"
-                    )
-                    self.label_points.append(np.array([center_x, top_y, center_z]))
 
     def build_static_legend(self) -> None:
         x_start = len(self.grid[0]) * BLOCK_SIZE + 1.0
@@ -209,9 +193,6 @@ class FactorCityApp:
             cube.translate(np.array([x_start, 0.0, idx * 0.6]))
             cube.paint_uniform_color(PRIME_COLORS[p])
             self.scene_widget.scene.add_geometry(f"legend_{p}", cube, self.mat)
-            self.scene_widget.scene.add_3d_label(
-                np.array([x_start + 0.5, 0.2, idx * 0.6]), f"p={p}"
-            )
 
     def build_delivery_truck(self) -> None:
         self.truck_mesh = o3d.geometry.TriangleMesh.create_sphere(radius=0.18)
@@ -222,11 +203,6 @@ class FactorCityApp:
     # -----------------------------------------------------------------------
     # UI event callbacks
     # -----------------------------------------------------------------------
-
-    def toggle_labels(self, checked: bool) -> None:
-        self.show_labels = checked
-        self.build_city_objects()
-        self.scene_widget.force_redraw()
 
     def toggle_animation(self, checked: bool) -> None:
         self.is_animating = checked
@@ -265,20 +241,17 @@ class FactorCityApp:
 
             def pick_callback(hit_info):
                 if hit_info is not None and hit_info.geometry_name.startswith("block_"):
-                    # Geometry name format: "block_{row}_{col}_{level}"
-                    parts = hit_info.geometry_name.split("_")
-                    r, c  = int(parts[1]), int(parts[2])
+                    parts   = hit_info.geometry_name.split("_")
+                    r, c    = int(parts[1]), int(parts[2])
                     number  = self.grid[r][c]
                     factors = get_prime_factors(number)
-                    factor_str  = " × ".join(map(str, factors))
-                    unique_p    = sorted(set(factors))
-                    floors      = len(factors)
-
+                    factor_str = " x ".join(map(str, factors))
+                    unique_p   = sorted(set(factors))
                     info = (
                         f"Number : {number}\n"
                         f"Factors: {factor_str}\n"
                         f"Primes : {', '.join(map(str, unique_p))}\n"
-                        f"Floors : {floors}\n"
+                        f"Floors : {len(factors)}\n"
                         f"Grid   : row {r}, col {c}"
                     )
 
