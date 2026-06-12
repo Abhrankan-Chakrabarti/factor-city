@@ -65,6 +65,19 @@ def create_block(col: int, row: int, level: int, color: list) -> o3d.geometry.Tr
     return mesh
 
 
+def ray_aabb_intersect(ray_o: np.ndarray, ray_d: np.ndarray,
+                       aabb_min: np.ndarray, aabb_max: np.ndarray) -> float:
+    """Slab method ray-AABB intersection. Returns t > 0 on hit, else inf."""
+    with np.errstate(divide='ignore', invalid='ignore'):
+        t1 = (aabb_min - ray_o) / ray_d
+        t2 = (aabb_max - ray_o) / ray_d
+    tmin = np.minimum(t1, t2).max()
+    tmax = np.maximum(t1, t2).min()
+    if tmax >= max(tmin, 0.0):
+        return tmin if tmin >= 0 else tmax
+    return float('inf')
+
+
 # ---------------------------------------------------------------------------
 # Dynamic Factor City Application
 # ---------------------------------------------------------------------------
@@ -77,7 +90,8 @@ class FactorCityApp:
         self.time_state    = 0.0
         self.selected_building: tuple | None = None
 
-        self.building_geom_names: list[str] = []
+        self.building_geom_names: list[str]  = []
+        self.labels_3d:           list       = []   # gui.Label3D handles
 
         gui.Application.instance.initialize()
         self.window = gui.Application.instance.create_window(
@@ -118,6 +132,11 @@ class FactorCityApp:
     def setup_ui_controls(self, em: float) -> None:
         self.panel.add_child(gui.Label("FACTOR CITY ENGINE"))
         self.panel.add_child(gui.Label(""))
+
+        self.label_cb = gui.Checkbox("Show Equation Labels")
+        self.label_cb.checked = True
+        self.label_cb.set_on_checked(self.toggle_labels)
+        self.panel.add_child(self.label_cb)
 
         self.anim_cb = gui.Checkbox("Run Delivery Truck")
         self.anim_cb.checked = True
@@ -163,10 +182,18 @@ class FactorCityApp:
     # Scene construction
     # -----------------------------------------------------------------------
 
+    def _clear_labels(self) -> None:
+        for lbl in self.labels_3d:
+            self.scene_widget.remove_3d_label(lbl)
+        self.labels_3d.clear()
+
     def build_city_objects(self) -> None:
         for name in self.building_geom_names:
             self.scene_widget.scene.remove_geometry(name)
         self.building_geom_names.clear()
+        self._clear_labels()
+
+        show = self.label_cb.checked if hasattr(self, 'label_cb') else True
 
         for row_idx, row in enumerate(self.grid):
             for col_idx, number in enumerate(row):
@@ -179,11 +206,21 @@ class FactorCityApp:
                     color = PRIME_COLORS.get(prime, DEFAULT_COLOR)
                     if self.selected_building == (row_idx, col_idx):
                         color = [min(1.0, c + 0.25) for c in color]
-
                     block = create_block(col_idx, row_idx, level, color)
                     name  = f"block_{row_idx}_{col_idx}_{level}"
                     self.scene_widget.scene.add_geometry(name, block, self.mat)
                     self.building_geom_names.append(name)
+
+                if show:
+                    top_y    = len(factors) * BLOCK_HEIGHT + 0.3
+                    center_x = col_idx * BLOCK_SIZE + BLOCK_SIZE / 2
+                    center_z = row_idx * BLOCK_SIZE + BLOCK_SIZE / 2
+                    factor_str = " x ".join(map(str, factors))
+                    lbl = self.scene_widget.add_3d_label(
+                        np.array([center_x, top_y, center_z]),
+                        f"{number}={factor_str}"
+                    )
+                    self.labels_3d.append(lbl)
 
     def build_static_legend(self) -> None:
         x_start = len(self.grid[0]) * BLOCK_SIZE + 1.0
@@ -201,8 +238,38 @@ class FactorCityApp:
         self.scene_widget.scene.add_geometry("delivery_truck", self.truck_mesh, self.mat)
 
     # -----------------------------------------------------------------------
+    # Building AABBs for manual ray picking
+    # -----------------------------------------------------------------------
+
+    def _building_aabbs(self) -> list[tuple]:
+        """Returns list of (row, col, aabb_min, aabb_max) for each building."""
+        aabbs = []
+        for row_idx, row in enumerate(self.grid):
+            for col_idx, number in enumerate(row):
+                if number <= 1:
+                    continue
+                factors = get_prime_factors(number)
+                floors  = len(factors)
+                bmin = np.array([
+                    col_idx * BLOCK_SIZE,
+                    0.0,
+                    row_idx * BLOCK_SIZE,
+                ])
+                bmax = np.array([
+                    col_idx * BLOCK_SIZE + BLOCK_SIZE,
+                    floors  * BLOCK_HEIGHT,
+                    row_idx * BLOCK_SIZE + BLOCK_SIZE,
+                ])
+                aabbs.append((row_idx, col_idx, bmin, bmax))
+        return aabbs
+
+    # -----------------------------------------------------------------------
     # UI event callbacks
     # -----------------------------------------------------------------------
+
+    def toggle_labels(self, checked: bool) -> None:
+        self.build_city_objects()
+        self.scene_widget.force_redraw()
 
     def toggle_animation(self, checked: bool) -> None:
         self.is_animating = checked
@@ -232,40 +299,76 @@ class FactorCityApp:
         self.scene_widget.force_redraw()
 
     # -----------------------------------------------------------------------
-    # Raycast picking
+    # Manual ray-AABB picking
     # -----------------------------------------------------------------------
 
     def on_scene_mouse_click(self, event: gui.MouseEvent) -> int:
         if (event.type == gui.MouseEvent.Type.BUTTON_DOWN
                 and event.is_button_down(gui.MouseButton.LEFT)):
 
-            def pick_callback(hit_info):
-                if hit_info is not None and hit_info.geometry_name.startswith("block_"):
-                    parts   = hit_info.geometry_name.split("_")
-                    r, c    = int(parts[1]), int(parts[2])
-                    number  = self.grid[r][c]
-                    factors = get_prime_factors(number)
-                    factor_str = " x ".join(map(str, factors))
-                    unique_p   = sorted(set(factors))
-                    info = (
-                        f"Number : {number}\n"
-                        f"Factors: {factor_str}\n"
-                        f"Primes : {', '.join(map(str, unique_p))}\n"
-                        f"Floors : {len(factors)}\n"
-                        f"Grid   : row {r}, col {c}"
-                    )
+            # Unproject mouse position into a world-space ray
+            frame  = self.scene_widget.frame
+            vp_x   = event.x - frame.x
+            vp_y   = event.y - frame.y
+            view   = self.scene_widget.scene.view
+            camera = self.scene_widget.scene.camera
 
-                    def update_ui():
-                        self.selected_building = (r, c)
-                        self.inspector_label.text = info
-                        self.build_city_objects()
-                        self.scene_widget.force_redraw()
+            # NDC coordinates
+            ndc_x =  (2.0 * vp_x / frame.width)  - 1.0
+            ndc_y = -(2.0 * vp_y / frame.height) + 1.0
 
-                    gui.Application.instance.post_to_main_thread(self.window, update_ui)
+            proj = np.array(camera.get_projection_matrix())
+            view_mat = np.array(camera.get_view_matrix())
 
-            self.scene_widget.scene.scene.pick_points(
-                event.x, event.y, 1, 1, pick_callback
-            )
+            # Unproject from NDC to world space
+            inv_proj = np.linalg.inv(proj)
+            inv_view = np.linalg.inv(view_mat)
+
+            clip_near = np.array([ndc_x, ndc_y, -1.0, 1.0])
+            clip_far  = np.array([ndc_x, ndc_y,  1.0, 1.0])
+
+            eye_near = inv_proj @ clip_near
+            eye_far  = inv_proj @ clip_far
+            eye_near /= eye_near[3]
+            eye_far  /= eye_far[3]
+
+            world_near = (inv_view @ eye_near)[:3]
+            world_far  = (inv_view @ eye_far)[:3]
+
+            ray_o = world_near
+            ray_d = world_far - world_near
+            norm  = np.linalg.norm(ray_d)
+            if norm < 1e-10:
+                return gui.SceneWidget.EventCallbackResult.IGNORED
+            ray_d /= norm
+
+            # Test against all building AABBs
+            best_t   = float('inf')
+            best_hit = None
+            for (r, c, bmin, bmax) in self._building_aabbs():
+                t = ray_aabb_intersect(ray_o, ray_d, bmin, bmax)
+                if t < best_t:
+                    best_t   = t
+                    best_hit = (r, c)
+
+            if best_hit is not None:
+                r, c    = best_hit
+                number  = self.grid[r][c]
+                factors = get_prime_factors(number)
+                factor_str = " x ".join(map(str, factors))
+                unique_p   = sorted(set(factors))
+                info = (
+                    f"Number : {number}\n"
+                    f"Factors: {factor_str}\n"
+                    f"Primes : {', '.join(map(str, unique_p))}\n"
+                    f"Floors : {len(factors)}\n"
+                    f"Grid   : row {r}, col {c}"
+                )
+                self.selected_building = (r, c)
+                self.inspector_label.text = info
+                self.build_city_objects()
+                self.scene_widget.force_redraw()
+
             return gui.SceneWidget.EventCallbackResult.HANDLED
 
         return gui.SceneWidget.EventCallbackResult.IGNORED
