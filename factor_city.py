@@ -89,7 +89,7 @@ class FactorCityApp:
 
         self.scene_widget = gui.SceneWidget()
         self.scene_widget.scene = rendering.Open3DScene(self.window.renderer)
-        self.scene_widget.scene.set_background_color(np.array([0.08, 0.08, 0.12, 1.0]))
+        self.scene_widget.scene.set_background([0.08, 0.08, 0.12, 1.0])
 
         em = self.window.theme.font_size
         self.panel = gui.Vert(
@@ -120,7 +120,7 @@ class FactorCityApp:
 
     def setup_ui_controls(self, em: float) -> None:
         self.panel.add_child(gui.Label("FACTOR CITY ENGINE"))
-        self.panel.add_child(gui.HorizSeparator())
+        self.panel.add_child(gui.Label("────────────────────"))
 
         self.label_cb = gui.Checkbox("Render 3D Equations")
         self.label_cb.checked = True
@@ -139,13 +139,13 @@ class FactorCityApp:
         self.speed_slider.set_on_value_changed(self.change_speed)
         self.panel.add_child(self.speed_slider)
 
-        self.panel.add_child(gui.HorizSeparator())
+        self.panel.add_child(gui.Label("────────────────────"))
 
         self.panel.add_child(gui.Label("BUILDING INSPECTOR:"))
         self.inspector_label = gui.Label("Click a building tower to analyze...")
         self.panel.add_child(self.inspector_label)
 
-        self.panel.add_child(gui.HorizSeparator())
+        self.panel.add_child(gui.Label("────────────────────"))
         self.panel.add_child(gui.Label("Construct Custom Block Tower:"))
 
         input_row = gui.Horiz(0.25 * em)
@@ -340,4 +340,3 @@ class FactorCityApp:
 if __name__ == "__main__":
     app = FactorCityApp(INITIAL_GRID)
     app.run()
-
