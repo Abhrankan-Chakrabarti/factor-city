@@ -304,7 +304,7 @@ class FactorCityApp:
     # -----------------------------------------------------------------------
 
     def on_key(self, event: gui.KeyEvent) -> int:
-        if (event.type == gui.KeyEvent.DOWN
+        if (event.type == gui.KeyEvent.Type.DOWN
                 and event.key == gui.KeyName.Q):
             gui.Application.instance.quit()
             return gui.SceneWidget.EventCallbackResult.HANDLED
@@ -330,6 +330,7 @@ class FactorCityApp:
             ray_o = world_near
             ray_d = world_far - world_near
             norm  = np.linalg.norm(ray_d)
+            print(f"[PICK] vp=({vp_x:.0f},{vp_y:.0f}) near={np.round(world_near,2)} far={np.round(world_far,2)} |ray|={norm:.4f}")
             if norm < 1e-10:
                 return gui.SceneWidget.EventCallbackResult.IGNORED
             ray_d /= norm
@@ -339,9 +340,11 @@ class FactorCityApp:
             best_hit = None
             for (r, c, bmin, bmax) in self._building_aabbs():
                 t = ray_aabb_intersect(ray_o, ray_d, bmin, bmax)
+                print(f"  AABB ({r},{c}) t={t:.3f}")
                 if t < best_t:
                     best_t   = t
                     best_hit = (r, c)
+            print(f"  best_hit={best_hit} best_t={best_t:.3f}")
 
             if best_hit is not None:
                 r, c    = best_hit
