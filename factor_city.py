@@ -323,14 +323,14 @@ class FactorCityApp:
             world_near = np.array(camera.unproject(
                 vp_x, vp_y, 0.0, frame.width, frame.height
             ))
-            world_far = np.array(camera.unproject(
-                vp_x, vp_y, 1.0, frame.width, frame.height
+            world_mid = np.array(camera.unproject(
+                vp_x, vp_y, 0.01, frame.width, frame.height
             ))
 
             ray_o = world_near
-            ray_d = world_far - world_near
+            ray_d = world_mid - world_near
             norm  = np.linalg.norm(ray_d)
-            print(f"[PICK] vp=({vp_x:.0f},{vp_y:.0f}) near={np.round(world_near,2)} far={np.round(world_far,2)} |ray|={norm:.4f}")
+            print(f"[PICK] vp=({vp_x:.0f},{vp_y:.0f}) near={np.round(world_near,2)} mid={np.round(world_mid,2)} |ray|={norm:.4f}")
             if norm < 1e-10:
                 return gui.SceneWidget.EventCallbackResult.IGNORED
             ray_d /= norm
