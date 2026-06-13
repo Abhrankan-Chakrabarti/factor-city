@@ -12,13 +12,14 @@ This script requires **Python 3.10+** and the following packages:
 pip install open3d numpy
 ```
 
-> **Python 3.13+ users:** Official Open3D wheels are currently provided up to Python 3.12. If you are on a newer Python version you will need to either use Python 3.12, or compile Open3D from source and install the generated `.whl` manually:
+> **Python 3.14 (Windows x64) users:** Official Open3D wheels are currently provided up to Python 3.12. A pre-compiled wheel for Python 3.14 on Windows (amd64) is available in the [GitHub release assets](https://github.com/Abhrankan-Chakrabarti/factor-city/releases). Download `open3d-0.19.0+22048a72f-cp314-cp314-win_amd64.whl` and install it manually before installing the other dependencies:
 >
 > ```bash
-> pip install open3d-<version>-cp3xx-cp3xx-<platform>.whl numpy
+> pip install open3d-0.19.0+22048a72f-cp314-cp314-win_amd64.whl
+> pip install numpy
 > ```
 >
-> Expect minor API differences from the documented Open3D releases when building from source.
+> For other platforms or Python versions above 3.12, you will need to compile Open3D from source.
 
 ## Usage
 
