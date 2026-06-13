@@ -12,6 +12,14 @@ This script requires **Python 3.10+** and the following packages:
 pip install open3d numpy
 ```
 
+> **Python 3.13+ users:** Official Open3D wheels are currently provided up to Python 3.12. If you are on a newer Python version you will need to either use Python 3.12, or compile Open3D from source and install the generated `.whl` manually:
+>
+> ```bash
+> pip install open3d-<version>-cp3xx-cp3xx-<platform>.whl numpy
+> ```
+>
+> Expect minor API differences from the documented Open3D releases when building from source.
+
 ## Usage
 
 ```bash
@@ -105,4 +113,3 @@ GAP          = 0.1   # gap fraction between blocks
 | Pan    | Right-click + drag |
 | Zoom   | Scroll wheel |
 | Quit   | Q or close window |
-
