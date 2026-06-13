@@ -123,6 +123,7 @@ class FactorCityApp:
 
         self.window.set_on_layout(self.on_layout)
         self.scene_widget.set_on_mouse(self.on_scene_mouse_click)
+        self.scene_widget.set_on_key(self.on_key)
         gui.Application.instance.post_to_main_thread(self.window, self.animation_loop)
 
     # -----------------------------------------------------------------------
@@ -302,38 +303,29 @@ class FactorCityApp:
     # Manual ray-AABB picking
     # -----------------------------------------------------------------------
 
+    def on_key(self, event: gui.KeyEvent) -> int:
+        if (event.type == gui.KeyEvent.DOWN
+                and event.key == gui.KeyName.Q):
+            gui.Application.instance.quit()
+            return gui.SceneWidget.EventCallbackResult.HANDLED
+        return gui.SceneWidget.EventCallbackResult.IGNORED
+
     def on_scene_mouse_click(self, event: gui.MouseEvent) -> int:
         if (event.type == gui.MouseEvent.Type.BUTTON_DOWN
                 and event.is_button_down(gui.MouseButton.LEFT)):
 
-            # Unproject mouse position into a world-space ray
             frame  = self.scene_widget.frame
             vp_x   = event.x - frame.x
             vp_y   = event.y - frame.y
-            view   = self.scene_widget.scene.view
             camera = self.scene_widget.scene.camera
 
-            # NDC coordinates
-            ndc_x =  (2.0 * vp_x / frame.width)  - 1.0
-            ndc_y = -(2.0 * vp_y / frame.height) + 1.0
-
-            proj = np.array(camera.get_projection_matrix())
-            view_mat = np.array(camera.get_view_matrix())
-
-            # Unproject from NDC to world space
-            inv_proj = np.linalg.inv(proj)
-            inv_view = np.linalg.inv(view_mat)
-
-            clip_near = np.array([ndc_x, ndc_y, -1.0, 1.0])
-            clip_far  = np.array([ndc_x, ndc_y,  1.0, 1.0])
-
-            eye_near = inv_proj @ clip_near
-            eye_far  = inv_proj @ clip_far
-            eye_near /= eye_near[3]
-            eye_far  /= eye_far[3]
-
-            world_near = (inv_view @ eye_near)[:3]
-            world_far  = (inv_view @ eye_far)[:3]
+            # Use camera.unproject() to get world-space ray points at near/far
+            world_near = np.array(camera.unproject(
+                vp_x, vp_y, 0.0, frame.width, frame.height
+            ))
+            world_far = np.array(camera.unproject(
+                vp_x, vp_y, 1.0, frame.width, frame.height
+            ))
 
             ray_o = world_near
             ray_d = world_far - world_near
