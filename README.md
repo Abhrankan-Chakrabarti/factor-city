@@ -54,7 +54,7 @@ Building **height** encodes the number of prime factors (Ω(n)), and **color** e
 | 11    | Orange     | 31    | Steel blue |
 | 13    | Purple     | >31   | Gray       |
 
-A color-coded legend is rendered to the right of the city grid in the 3D scene.
+A color-coded legend with `p=N` labels is rendered to the right of the city grid in the 3D scene, in addition to the text legend in the side panel.
 
 **Animated Delivery Truck**
 
@@ -64,11 +64,11 @@ A white sphere orbits the city along a sinusoidal path with a hopping vertical m
 
 | Control | Description |
 |---------|-------------|
-| Render 3D Equations | Toggle floating `n = p₁ × p₂ × …` labels above each rooftop |
+| Show Equation Labels | Toggle floating `n = p₁ × p₂ × …` labels above each rooftop |
 | Run Delivery Truck | Pause or resume the animated truck |
 | Truck Speed | Slider — adjusts animation speed from 0.1× to 3.0× |
 | Building Inspector | Displays factorization details for the last clicked building |
-| Construct Custom Block Tower | Enter any integer ≥ 2 and click **Deploy** to place it in the next empty grid slot |
+| Construct Custom Block Tower | Enter any integer ≥ 2 and click **Deploy** to place it in the next empty grid slot. If the grid is completely full, the building at (0,0) is replaced instead — the inspector panel shows a message confirming what was replaced. |
 
 ## Building Inspector
 
